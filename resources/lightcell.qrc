@@ -1,0 +1,8 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/">
+    <file alias="icons/lightcell.png">lightcell.png</file>
+    <file alias="icons/lightcell.ico">lightcell.ico</file>
+    <file alias="icons/lightcell_minimal.png">lightcell_minimal.png</file>
+    <file alias="icons/lightcell_minimal.ico">lightcell_minimal.ico</file>
+</qresource>
+</RCC>

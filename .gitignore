@@ -1,0 +1,32 @@
+# CMake & Build artifacts
+build/
+build_release/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.ninja
+
+# Qt Creator & IDE
+*.user
+*.user.*
+.qtc_clangd/
+
+# Release Folders & Archives
+LightCell_v1.0/
+*.zip
+*.7z
+
+# Temporary files & Testing data
+*.tmp
+dummy_data.csv
+test*.cx
+
+# Windows & OS caches
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Inno Setup Output
+Output/
