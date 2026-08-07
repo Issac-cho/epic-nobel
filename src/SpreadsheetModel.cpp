@@ -843,42 +843,103 @@ void SpreadsheetModel::sortRange(int column, Qt::SortOrder order) {
 
     beginResetModel(); // 강제 UI 리로드를 통해 정렬 결과를 확실히 반영
     
+    struct RowData {
+        int originalRow;
+        QString sortValue;
+        QHash<int, QString> cells;
+        QHash<int, QFont> fonts;
+        QHash<int, QColor> bgColors;
+        QHash<int, QColor> fgColors;
+        QHash<int, int> alignments;
+        QHash<int, int> borders;
+        QHash<int, bool> verticalTexts;
+        QHash<int, QString> formats;
+    };
+
+    std::vector<RowData> rowsData;
+    int count = m_rangeRowMap.size() - dataStartRow;
+    rowsData.reserve(count);
+
     auto beginIt = m_rangeRowMap.begin() + dataStartRow;
     auto endIt = m_rangeRowMap.end();
 
-    // 값을 캐싱하여 디스크 접근 성능 문제 해결
-    std::vector<QPair<QString, int>> cachedValues;
-    cachedValues.reserve(std::distance(beginIt, endIt));
     for (auto it = beginIt; it != endIt; ++it) {
         int lRow = *it;
+        RowData rd;
+        rd.originalRow = lRow;
+        
         QString v = getCellData(lRow, column);
         if (m_editedData.contains(qMakePair(lRow, column))) v = m_editedData[qMakePair(lRow, column)];
-        cachedValues.push_back(qMakePair(v, lRow));
+        rd.sortValue = v;
+
+        // Extract data for ONLY the filtered columns
+        for (int c = m_filterStartCol; c <= m_filterEndCol; ++c) {
+            auto pos = qMakePair(lRow, c);
+            QString rawVal = getRawCellValue(lRow, c); // getRawCellValue takes logical row
+            if (!rawVal.isEmpty() || m_editedData.contains(pos)) rd.cells[c] = rawVal;
+            
+            if (m_fonts.contains(pos)) rd.fonts[c] = m_fonts[pos];
+            if (m_bgColors.contains(pos)) rd.bgColors[c] = m_bgColors[pos];
+            if (m_fgColors.contains(pos)) rd.fgColors[c] = m_fgColors[pos];
+            if (m_alignments.contains(pos)) rd.alignments[c] = m_alignments[pos];
+            if (m_borders.contains(pos)) rd.borders[c] = m_borders[pos];
+            if (m_verticalTexts.contains(pos)) rd.verticalTexts[c] = m_verticalTexts[pos];
+            if (m_formats.contains(pos)) rd.formats[c] = m_formats[pos];
+        }
+        rowsData.push_back(rd);
     }
     
-    std::sort(cachedValues.begin(), cachedValues.end(), [order](const QPair<QString, int> &a, const QPair<QString, int> &b) {
-        bool aEmpty = a.first.trimmed().isEmpty();
-        bool bEmpty = b.first.trimmed().isEmpty();
+    std::sort(rowsData.begin(), rowsData.end(), [order](const RowData &a, const RowData &b) {
+        bool aEmpty = a.sortValue.trimmed().isEmpty();
+        bool bEmpty = b.sortValue.trimmed().isEmpty();
         
         // 엑셀 표준: 빈 셀은 오름차순/내림차순 상관없이 무조건 맨 아래로
         if (aEmpty && !bEmpty) return false;
         if (!aEmpty && bEmpty) return true;
-        if (aEmpty && bEmpty) return a.second < b.second; // 둘 다 비었으면 원래 순서 유지
+        if (aEmpty && bEmpty) return a.originalRow < b.originalRow;
 
         bool ok1, ok2;
-        double d1 = a.first.toDouble(&ok1);
-        double d2 = b.first.toDouble(&ok2);
+        double d1 = a.sortValue.toDouble(&ok1);
+        double d2 = b.sortValue.toDouble(&ok2);
         if (ok1 && ok2) {
             return order == Qt::AscendingOrder ? (d1 < d2) : (d1 > d2);
         }
-        return order == Qt::AscendingOrder ? (a.first.compare(b.first, Qt::CaseInsensitive) < 0) : (a.first.compare(b.first, Qt::CaseInsensitive) > 0);
+        return order == Qt::AscendingOrder ? (a.sortValue.compare(b.sortValue, Qt::CaseInsensitive) < 0) : (a.sortValue.compare(b.sortValue, Qt::CaseInsensitive) > 0);
     });
     
-    // 캐싱된 결과에 맞춰 맵핑 인덱스 업데이트
-    for (size_t i = 0; i < cachedValues.size(); ++i) {
-        *(beginIt + i) = cachedValues[i].second;
-        if (dataStartRow + i < m_rowMap.size()) {
-            m_rowMap[dataStartRow + i] = cachedValues[i].second;
+    // Write sorted data back to the original logical rows
+    for (size_t i = 0; i < rowsData.size(); ++i) {
+        int lRow = *(beginIt + i); // original target logical row
+        const RowData &rd = rowsData[i];
+        
+        for (int c = m_filterStartCol; c <= m_filterEndCol; ++c) {
+            auto pos = qMakePair(lRow, c);
+            
+            // Clear existing
+            m_editedData.remove(pos);
+            m_fonts.remove(pos);
+            m_bgColors.remove(pos);
+            m_fgColors.remove(pos);
+            m_alignments.remove(pos);
+            m_borders.remove(pos);
+            m_verticalTexts.remove(pos);
+            m_formats.remove(pos);
+            
+            // Set new
+            if (rd.cells.contains(c)) {
+                // We MUST set it into m_editedData so it overrides the underlying file data
+                m_editedData[pos] = rd.cells[c];
+            } else {
+                // If it was empty, we must also set it to empty string to shadow any underlying file data
+                m_editedData[pos] = "";
+            }
+            if (rd.fonts.contains(c)) m_fonts[pos] = rd.fonts[c];
+            if (rd.bgColors.contains(c)) m_bgColors[pos] = rd.bgColors[c];
+            if (rd.fgColors.contains(c)) m_fgColors[pos] = rd.fgColors[c];
+            if (rd.alignments.contains(c)) m_alignments[pos] = rd.alignments[c];
+            if (rd.borders.contains(c)) m_borders[pos] = rd.borders[c];
+            if (rd.verticalTexts.contains(c)) m_verticalTexts[pos] = rd.verticalTexts[c];
+            if (rd.formats.contains(c)) m_formats[pos] = rd.formats[c];
         }
     }
 
