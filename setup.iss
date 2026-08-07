@@ -1,16 +1,16 @@
-ï»¿[Setup]
+[Setup]
 AppName=LightCell
-AppVersion=1.0.1
+AppVersion=1.1.0
 DefaultDirName={pf}\LightCell
 DefaultGroupName=LightCell
 UninstallDisplayIcon={app}\LightCell.exe
 Compression=lzma2
 SolidCompression=yes
 OutputDir=Output
-OutputBaseFilename=LightCell_Setup_v1.0.1
+OutputBaseFilename=LightCell_Setup_v1.1.0
 
 [Files]
-Source: "LightCell_v1.0.1\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "LightCell_v1.1.0\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\LightCell"; Filename: "{app}\LightCell.exe"
@@ -18,4 +18,4 @@ Name: "{group}\Uninstall LightCell"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\LightCell"; Filename: "{app}\LightCell.exe"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "ë°”íƒ• í™”ë©´ì— ë°”ë¡œ ê°€ê¸° ë§Œë“¤ê¸°"; GroupDescription: "ì¶”ê°€ ì•„ì´ì½˜"
+Name: "desktopicon"; Description: "¹ÙÅÁ È­¸é¿¡ ¹Ù·Î °¡±â ¸¸µé±â"; GroupDescription: "Ãß°¡ ¾ÆÀÌÄÜ"
