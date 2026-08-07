@@ -57,6 +57,7 @@ public:
     void setCellAlignment(const QModelIndexList &indexes, int alignment);
     void applyVerticalText(const QModelIndexList &indexes, bool enable);
     void applyFormat(const QModelIndexList &indexes, const QString &format);
+    void applyFillDown(const QModelIndexList &indexes);
 
     // Merge
     void addMergedRange(const QRect &range);

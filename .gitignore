@@ -13,7 +13,7 @@ Makefile
 .qtc_clangd/
 
 # Release Folders & Archives
-LightCell_v1.0/
+LightCell_v*/
 *.zip
 *.7z
 

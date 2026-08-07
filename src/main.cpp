@@ -13,6 +13,10 @@ int main(int argc, char *argv[]) {
     app.setStyle("Fusion");
 
     MainWindow w;
+    if (app.arguments().size() > 1) {
+        QString fileName = app.arguments().at(1);
+        w.openFile(fileName);
+    }
     w.show();
     
     return app.exec();

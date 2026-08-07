@@ -198,7 +198,7 @@ namespace MathExpr {
 
 QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
     static int recursionDepth = 0;
-    if (recursionDepth > 100) return "#REF!";
+    if (recursionDepth > 1000) return "#REF!";
     recursionDepth++;
 
     auto getStringValue = [this](const QString &sheetName, int r, int c) -> QString {
@@ -209,7 +209,7 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
             if (mw) {
                 SpreadsheetModel *sm = mw->getSheetModel(sheetName);
                 if (sm) {
-                    return sm->data(sm->index(r, c), Qt::DisplayRole).toString();
+                    return sm->data(sm->index(r, c), Qt::UserRole + 10).toString();
                 }
             }
             return "";
@@ -228,7 +228,7 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
             if (mw) {
                 SpreadsheetModel *sm = mw->getSheetModel(sheetName);
                 if (sm) {
-                    return sm->data(sm->index(r, c), Qt::DisplayRole).toDouble();
+                    return sm->data(sm->index(r, c), Qt::UserRole + 10).toDouble();
                 }
             }
             return 0.0;
@@ -236,7 +236,7 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
     };
 
     // 1. 단일 셀 참조인지 확인 (단일 텍스트 셀인 경우 문자열 반환을 위함)
-    QRegularExpression exactCellRegex("^(?:([^!]+)!)?([A-Z]+)(\\d+)$", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression exactCellRegex("^(?:'?([^!']+)'?!)?([A-Z]+)(\\d+)$", QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch exactCellMatch = exactCellRegex.match(formula);
     if (exactCellMatch.hasMatch()) {
         QString val = getStringValue(exactCellMatch.captured(1), exactCellMatch.captured(3).toInt()-1, colFromLetters(exactCellMatch.captured(2)));
@@ -245,13 +245,9 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
             recursionDepth--;
             return evalStr;
         }
-        // 만약 숫자로 변환되지 않는 순수 문자열이면 바로 반환
-        bool isNum;
-        val.toDouble(&isNum);
-        if (!isNum && !val.isEmpty()) {
-            recursionDepth--;
-            return val;
-        }
+        
+        recursionDepth--;
+        return val;
     }
 
     QString expr = formula.toUpper();
@@ -267,7 +263,7 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
 
         for (QString arg : args) {
             arg = arg.trimmed();
-            QRegularExpression rangeRegex("^(?:([^!]+)!)?([A-Z]+)(\\d+):([A-Z]+)(\\d+)$");
+            QRegularExpression rangeRegex("^(?:'?([^!']+)'?!)?([A-Z]+)(\\d+):([A-Z]+)(\\d+)$");
             QRegularExpressionMatch rangeMatch = rangeRegex.match(arg);
             if (rangeMatch.hasMatch()) {
                 QString sheetName = rangeMatch.captured(1);
@@ -283,7 +279,7 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
                 continue;
             }
             
-            QRegularExpression cellRegex("^(?:([^!]+)!)?([A-Z]+)(\\d+)$");
+            QRegularExpression cellRegex("^(?:'?([^!']+)'?!)?([A-Z]+)(\\d+)$");
             QRegularExpressionMatch cellMatch = cellRegex.match(arg);
             if (cellMatch.hasMatch()) {
                 QString sheetName = cellMatch.captured(1);
@@ -297,20 +293,38 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
             double val = arg.toDouble(&ok);
             if (ok) total += val;
         }
-        expr.replace(match.capturedStart(0), match.capturedLength(0), QString::number(total, 'f', 6));
+        auto formatDouble = [](double v) -> QString {
+            QString s = QString::number(v, 'f', 12);
+            if (s.contains('.')) {
+                while (s.endsWith('0')) s.chop(1);
+                if (s.endsWith('.')) s.chop(1);
+            }
+            return s;
+        };
+
+        expr.replace(match.capturedStart(0), match.capturedLength(0), formatDouble(total));
     }
 
     // 3. 남은 단일 셀 참조 치환 (예: A1 + B2)
-    QRegularExpression cellRefRegex("\\b(?:([^!+*/()-]+)!)?([A-Z]+)(\\d+)\\b");
+    QRegularExpression cellRefRegex("(?:(?:'([^']+)'|([^!+*/(),<>=&^% \\t']+))!)?\\b([A-Z]+)(\\d+)\\b");
     int offset = 0;
     while ((match = cellRefRegex.match(expr, offset)).hasMatch()) {
         QString sheetName = match.captured(1);
-        int col = colFromLetters(match.captured(2));
-        int row = match.captured(3).toInt() - 1;
+        if (sheetName.isEmpty()) sheetName = match.captured(2);
+        int col = colFromLetters(match.captured(3));
+        int row = match.captured(4).toInt() - 1;
         double val = getNumValue(sheetName, row, col);
         
-        // 치환 후 길이나 인덱스가 달라지므로 offset 처리 주의
-        expr.replace(match.capturedStart(0), match.capturedLength(0), QString::number(val, 'f', 6));
+        auto formatDouble = [](double v) -> QString {
+            QString s = QString::number(v, 'f', 12);
+            if (s.contains('.')) {
+                while (s.endsWith('0')) s.chop(1);
+                if (s.endsWith('.')) s.chop(1);
+            }
+            return s;
+        };
+        
+        expr.replace(match.capturedStart(0), match.capturedLength(0), formatDouble(val));
         offset = 0; // 문자열이 변했으므로 다시 처음부터 탐색
     }
 
@@ -319,7 +333,13 @@ QString SpreadsheetModel::evaluateFormula(const QString &formula) const {
     double result = parser.evaluate(expr);
 
     recursionDepth--;
-    return QString::number(result);
+    
+    QString finalStr = QString::number(result, 'f', 12);
+    if (finalStr.contains('.')) {
+        while (finalStr.endsWith('0')) finalStr.chop(1);
+        if (finalStr.endsWith('.')) finalStr.chop(1);
+    }
+    return finalStr;
 }
 
 QVariant SpreadsheetModel::data(const QModelIndex &index, int role) const {
@@ -347,6 +367,12 @@ QVariant SpreadsheetModel::data(const QModelIndex &index, int role) const {
             }
         }
 
+        return val;
+    } else if (role == Qt::UserRole + 10) {
+        QString val = getRawCellValue(index.row(), index.column());
+        if (val.startsWith("=")) {
+            val = evaluateFormula(val.mid(1));
+        }
         return val;
     } else if (role == Qt::EditRole) {
         return getRawCellValue(index.row(), index.column());
@@ -1539,4 +1565,110 @@ void SpreadsheetModel::applyFormat(const QModelIndexList &indexes, const QString
         if (idx.column() > maxC) maxC = idx.column();
     }
     emit dataChanged(index(minR, minC), index(maxR, maxC), {Qt::DisplayRole});
+}
+
+static QString shiftFormula(const QString &formula, int rowDelta, int colDelta) {
+    if (!formula.startsWith("=")) return formula;
+    
+    QString result = formula;
+    QRegularExpression rx("(^|[^A-Za-z0-9_])((?:(?:'[^']+'|[^!+*/(),<>=&^%\\s]+)!)?)(\\$?)([A-Z]+)(\\$?)([1-9][0-9]*)(?![A-Za-z0-9_]|\\()");
+    
+    int offset = 0;
+    QRegularExpressionMatch match;
+    while ((match = rx.match(result, offset)).hasMatch()) {
+        QString pre = match.captured(1);
+        QString sheet = match.captured(2);
+        QString colAbs = match.captured(3);
+        QString colStr = match.captured(4);
+        QString rowAbs = match.captured(5);
+        QString rowStr = match.captured(6);
+        
+        int col = 0;
+        for (QChar c : colStr) {
+            col = col * 26 + (c.unicode() - 'A' + 1);
+        }
+        col -= 1;
+        int row = rowStr.toInt() - 1;
+        
+        if (colAbs.isEmpty()) {
+            col += colDelta;
+            if (col < 0) col = 0;
+        }
+        if (rowAbs.isEmpty()) {
+            row += rowDelta;
+            if (row < 0) row = 0;
+        }
+        
+        QString newColStr;
+        int tempCol = col + 1;
+        while (tempCol > 0) {
+            int rem = (tempCol - 1) % 26;
+            newColStr.prepend(QChar('A' + rem));
+            tempCol = (tempCol - 1) / 26;
+        }
+        QString newRowStr = QString::number(row + 1);
+        
+        QString newRef = pre + sheet + colAbs + newColStr + rowAbs + newRowStr;
+        result.replace(match.capturedStart(0), match.capturedLength(0), newRef);
+        offset = match.capturedStart(0) + newRef.length();
+    }
+    
+    return result;
+}
+
+void SpreadsheetModel::applyFillDown(const QModelIndexList &indexes) {
+    if (indexes.isEmpty()) return;
+    
+    int minRow = rowCount();
+    int maxRow = -1;
+    int minCol = columnCount();
+    int maxCol = -1;
+    
+    QSet<QPair<int, int>> posSet = expandToMergedPositions(indexes);
+    if (posSet.isEmpty()) return;
+    
+    for (const auto &pos : posSet) {
+        if (pos.first < minRow) minRow = pos.first;
+        if (pos.first > maxRow) maxRow = pos.first;
+        if (pos.second < minCol) minCol = pos.second;
+        if (pos.second > maxCol) maxCol = pos.second;
+    }
+    
+    pushUndo();
+    
+    if (minRow == maxRow) {
+        if (minRow > 0) {
+            for (int c = minCol; c <= maxCol; ++c) {
+                QString val = getRawCellValue(minRow - 1, c);
+                val = shiftFormula(val, 1, 0);
+                setData(index(minRow, c), val, Qt::EditRole);
+                m_formats[qMakePair(m_rowMap[minRow], c)] = m_formats.value(qMakePair(m_rowMap[minRow - 1], c), "");
+                m_bgColors[qMakePair(m_rowMap[minRow], c)] = m_bgColors.value(qMakePair(m_rowMap[minRow - 1], c), QColor(Qt::white));
+                m_fgColors[qMakePair(m_rowMap[minRow], c)] = m_fgColors.value(qMakePair(m_rowMap[minRow - 1], c), QColor(Qt::black));
+                m_fonts[qMakePair(m_rowMap[minRow], c)] = m_fonts.value(qMakePair(m_rowMap[minRow - 1], c), QFont());
+                m_alignments[qMakePair(m_rowMap[minRow], c)] = m_alignments.value(qMakePair(m_rowMap[minRow - 1], c), Qt::AlignLeft | Qt::AlignVCenter);
+            }
+        }
+    } else {
+        for (int c = minCol; c <= maxCol; ++c) {
+            QString val = getRawCellValue(minRow, c);
+            QString fmt = m_formats.value(qMakePair(m_rowMap[minRow], c), "");
+            QColor bg = m_bgColors.value(qMakePair(m_rowMap[minRow], c), QColor(Qt::white));
+            QColor fg = m_fgColors.value(qMakePair(m_rowMap[minRow], c), QColor(Qt::black));
+            QFont font = m_fonts.value(qMakePair(m_rowMap[minRow], c), QFont());
+            int align = m_alignments.value(qMakePair(m_rowMap[minRow], c), Qt::AlignLeft | Qt::AlignVCenter);
+            
+            for (int r = minRow + 1; r <= maxRow; ++r) {
+                if (posSet.contains({r, c})) {
+                    QString shiftedVal = shiftFormula(val, r - minRow, 0);
+                    setData(index(r, c), shiftedVal, Qt::EditRole);
+                    m_formats[qMakePair(m_rowMap[r], c)] = fmt;
+                    m_bgColors[qMakePair(m_rowMap[r], c)] = bg;
+                    m_fgColors[qMakePair(m_rowMap[r], c)] = fg;
+                    m_fonts[qMakePair(m_rowMap[r], c)] = font;
+                    m_alignments[qMakePair(m_rowMap[r], c)] = align;
+                }
+            }
+        }
+    }
 }

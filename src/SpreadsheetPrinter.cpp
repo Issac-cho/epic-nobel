@@ -274,9 +274,42 @@ void SpreadsheetPrinter::renderPage(QPainter &painter, SpreadsheetModel *model, 
                     painter.setPen(fg.isValid() ? fg : QColor("#000000"));
                     int align = model->data(origIdx, Qt::TextAlignmentRole).toInt();
                     if (align == 0) align = Qt::AlignLeft | Qt::AlignVCenter;
+                    bool isVert = model->data(origIdx, Qt::UserRole + 4).toBool();
                     painter.save();
                     painter.setClipRect(cellRect);
-                    painter.drawText(cellRect.adjusted(5, 2, -5, -2), align | Qt::TextSingleLine, text);
+                    if (isVert) {
+                        QFontMetricsF fm(f);
+                        QStringList lines = text.split('\n');
+                        qreal colWidth = fm.height();
+                        qreal totalWidth = colWidth * lines.size();
+                        qreal startX = cellRect.right() - colWidth;
+                        if (align & Qt::AlignHCenter) {
+                            startX = cellRect.center().x() + (totalWidth / 2.0) - colWidth;
+                        } else if (align & Qt::AlignLeft) {
+                            startX = cellRect.left() + totalWidth - colWidth;
+                        }
+                        qreal margin = 2;
+                        for (int l = 0; l < lines.size(); ++l) {
+                            QString line = lines[l];
+                            qreal totalHeight = fm.height() * line.length();
+                            qreal cy = cellRect.top() + margin;
+                            if (align & Qt::AlignVCenter) {
+                                cy += qMax(qreal(0), (cellRect.height() - totalHeight) / 2.0);
+                            } else if (align & Qt::AlignBottom) {
+                                cy = cellRect.bottom() - totalHeight - margin;
+                            }
+                            cy += fm.ascent();
+                            qreal cx = startX - (l * colWidth);
+                            for (int i = 0; i < line.length(); ++i) {
+                                QChar c = line[i];
+                                qreal charWidth = fm.horizontalAdvance(c);
+                                painter.drawText(cx + (colWidth - charWidth)/2.0, cy, QString(c));
+                                cy += fm.height();
+                            }
+                        }
+                    } else {
+                        painter.drawText(cellRect.adjusted(5, 2, -5, -2), align | Qt::TextWordWrap, text);
+                    }
                     painter.restore();
                 }
                 x += w;
@@ -315,9 +348,42 @@ void SpreadsheetPrinter::renderPage(QPainter &painter, SpreadsheetModel *model, 
                 painter.setPen(fg.isValid() ? fg : QColor("#000000"));
                 int align = model->data(idx, Qt::TextAlignmentRole).toInt();
                 if (align == 0) align = Qt::AlignLeft | Qt::AlignVCenter;
+                bool isVert = model->data(idx, Qt::UserRole + 4).toBool();
                 painter.save();
                 painter.setClipRect(cellRect);
-                painter.drawText(cellRect.adjusted(5, 2, -5, -2), align | Qt::TextSingleLine, text);
+                if (isVert) {
+                    QFontMetricsF fm(f);
+                    QStringList lines = text.split('\n');
+                    qreal colWidth = fm.height();
+                    qreal totalWidth = colWidth * lines.size();
+                    qreal startX = cellRect.right() - colWidth;
+                    if (align & Qt::AlignHCenter) {
+                        startX = cellRect.center().x() + (totalWidth / 2.0) - colWidth;
+                    } else if (align & Qt::AlignLeft) {
+                        startX = cellRect.left() + totalWidth - colWidth;
+                    }
+                    qreal margin = 2;
+                    for (int l = 0; l < lines.size(); ++l) {
+                        QString line = lines[l];
+                        qreal totalHeight = fm.height() * line.length();
+                        qreal cy = cellRect.top() + margin;
+                        if (align & Qt::AlignVCenter) {
+                            cy += qMax(qreal(0), (cellRect.height() - totalHeight) / 2.0);
+                        } else if (align & Qt::AlignBottom) {
+                            cy = cellRect.bottom() - totalHeight - margin;
+                        }
+                        cy += fm.ascent();
+                        qreal cx = startX - (l * colWidth);
+                        for (int i = 0; i < line.length(); ++i) {
+                            QChar c = line[i];
+                            qreal charWidth = fm.horizontalAdvance(c);
+                            painter.drawText(cx + (colWidth - charWidth)/2.0, cy, QString(c));
+                            cy += fm.height();
+                        }
+                    }
+                } else {
+                    painter.drawText(cellRect.adjusted(5, 2, -5, -2), align | Qt::TextWordWrap, text);
+                }
                 painter.restore();
             }
 

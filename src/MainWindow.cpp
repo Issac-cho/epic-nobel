@@ -40,6 +40,9 @@ bool MainWindow::s_isSelectingFormulaRange = false;
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QButtonGroup>
+#include <QMenuBar>
+#include <QTreeWidget>
+#include <QSplitter>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("LightCell");
@@ -53,36 +56,38 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 }
 
 void MainWindow::setupUi() {
-    QToolBar *toolBar = addToolBar("MainToolBar");
-    toolBar->setMovable(false);
-    
-    QAction *newAction = toolBar->addAction("📄 New");
+    QMenuBar *menuBar = new QMenuBar(this);
+    setMenuBar(menuBar);
+
+    QMenu *fileMenu = menuBar->addMenu("File");
+    QAction *newAction = fileMenu->addAction("📄 New");
     newAction->setShortcut(QKeySequence::New);
     connect(newAction, &QAction::triggered, this, &MainWindow::newDocument);
 
-    QAction *openAction = toolBar->addAction("📂 Open");
+    QAction *openAction = fileMenu->addAction("📂 Open");
     openAction->setShortcut(QKeySequence::Open);
-    connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
+    connect(openAction, &QAction::triggered, this, &MainWindow::onOpenFileAction);
     
-    QAction *saveAction = toolBar->addAction("💾 Save");
+    QAction *saveAction = fileMenu->addAction("💾 Save");
     saveAction->setShortcut(QKeySequence::Save);
     connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
 
-    QAction *saveAsAction = toolBar->addAction("📑 Save As...");
+    QAction *saveAsAction = fileMenu->addAction("📑 Save As...");
     saveAsAction->setShortcuts({QKeySequence::SaveAs, QKeySequence("F12")});
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
 
-    QAction *exportAction = toolBar->addAction("🚀 Export Excel");
+    QAction *exportAction = fileMenu->addAction("🚀 Export Excel");
     exportAction->setShortcut(QKeySequence("Ctrl+Shift+E"));
     connect(exportAction, &QAction::triggered, this, &MainWindow::exportToExcel);
     
-    QAction *printAction = toolBar->addAction("🖨️ Print");
+    QAction *printAction = fileMenu->addAction("🖨️ Print");
     printAction->setShortcut(QKeySequence("Ctrl+P"));
     printAction->setShortcutContext(Qt::WindowShortcut);
     connect(printAction, &QAction::triggered, this, &MainWindow::printSheet);
     addAction(printAction);
-    
-    QAction *undoAct = toolBar->addAction("↩️ Undo");
+
+    QMenu *editMenu = menuBar->addMenu("Edit");
+    QAction *undoAct = editMenu->addAction("↩️ Undo");
     undoAct->setShortcuts({QKeySequence::Undo, QKeySequence("Ctrl+Z")});
     undoAct->setShortcutContext(Qt::WidgetShortcut);
     connect(undoAct, &QAction::triggered, this, [this]() {
@@ -100,7 +105,7 @@ void MainWindow::setupUi() {
         }
     });
 
-    QAction *redoAct = toolBar->addAction("↪️ Redo");
+    QAction *redoAct = editMenu->addAction("↪️ Redo");
     redoAct->setShortcuts({QKeySequence::Redo, QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y")});
     redoAct->setShortcutContext(Qt::WidgetShortcut);
     connect(redoAct, &QAction::triggered, this, [this]() {
@@ -117,23 +122,29 @@ void MainWindow::setupUi() {
             }
         }
     });
-
-    toolBar->addSeparator();
     
-    QAction *boldAction = toolBar->addAction("B (굵게)");
+    QAction *findAction = editMenu->addAction("🔍 Find");
+    findAction->setShortcut(QKeySequence::Find);
+    connect(findAction, &QAction::triggered, this, &MainWindow::applyFind);
+
+    QToolBar *toolBar = addToolBar("MainToolBar");
+    toolBar->setMovable(false);
+
+    QAction *boldAction = toolBar->addAction("B");
+    boldAction->setToolTip("굵게");
     boldAction->setShortcut(QKeySequence::Bold);
     connect(boldAction, &QAction::triggered, this, &MainWindow::applyBold);
     
-    QAction *italicAction = toolBar->addAction("I (기울임)");
+    QAction *italicAction = toolBar->addAction("I");
+    italicAction->setToolTip("기울임");
     italicAction->setShortcut(QKeySequence::Italic);
     connect(italicAction, &QAction::triggered, this, &MainWindow::applyItalic);
     
-    toolBar->addWidget(new QLabel(" Font Size: "));
     m_fontSizeCombo = new QComboBox(this);
+    m_fontSizeCombo->setToolTip("Font Size");
     m_fontSizeCombo->setEditable(true);
     m_fontSizeCombo->addItems({"8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24", "28", "36", "48", "72"});
     
-    // 사용자가 숫자를 치고 엔터를 눌렀을 때만 반영
     connect(m_fontSizeCombo->lineEdit(), &QLineEdit::returnPressed, this, [this]() {
         bool ok;
         int size = m_fontSizeCombo->currentText().toInt(&ok);
@@ -142,7 +153,6 @@ void MainWindow::setupUi() {
             m_tableView->setFocus();
         }
     });
-    // 마우스로 드롭다운에서 선택했을 때 반영
     connect(m_fontSizeCombo, &QComboBox::activated, this, [this](int index) {
         bool ok;
         int size = m_fontSizeCombo->itemText(index).toInt(&ok);
@@ -155,49 +165,50 @@ void MainWindow::setupUi() {
     
     toolBar->addSeparator();
     
-    QAction *alignLeftAct = toolBar->addAction("⬅️ 좌");
+    QAction *alignLeftAct = toolBar->addAction("⬅️");
+    alignLeftAct->setToolTip("좌로 정렬");
     alignLeftAct->setShortcut(QKeySequence("Ctrl+L"));
     connect(alignLeftAct, &QAction::triggered, this, &MainWindow::applyAlignLeft);
-    QAction *alignCenterAct = toolBar->addAction("⬆️ 중");
+    QAction *alignCenterAct = toolBar->addAction("⬆️");
+    alignCenterAct->setToolTip("가운데 정렬");
     alignCenterAct->setShortcut(QKeySequence("Ctrl+E"));
     connect(alignCenterAct, &QAction::triggered, this, &MainWindow::applyAlignCenter);
-    QAction *alignRightAct = toolBar->addAction("➡️ 우");
+    QAction *alignRightAct = toolBar->addAction("➡️");
+    alignRightAct->setToolTip("우로 정렬");
     alignRightAct->setShortcut(QKeySequence("Ctrl+R"));
     connect(alignRightAct, &QAction::triggered, this, &MainWindow::applyAlignRight);
 
     toolBar->addSeparator();
 
-    QAction *bgAct = toolBar->addAction("🎨 배경색");
+    QAction *bgAct = toolBar->addAction("🎨");
+    bgAct->setToolTip("배경색");
     bgAct->setShortcut(QKeySequence("Alt+B"));
     connect(bgAct, &QAction::triggered, this, &MainWindow::applyBackgroundColor);
-    QAction *fgAct = toolBar->addAction("🖍️ 글자색");
+    QAction *fgAct = toolBar->addAction("🖍️");
+    fgAct->setToolTip("글자색");
     fgAct->setShortcut(QKeySequence("Alt+C"));
     connect(fgAct, &QAction::triggered, this, &MainWindow::applyTextColor);
-    QAction *mergeAct = toolBar->addAction("🔗 병합/해제");
+    QAction *mergeAct = toolBar->addAction("🔗");
+    mergeAct->setToolTip("병합/해제");
     mergeAct->setShortcut(QKeySequence("Ctrl+M"));
     connect(mergeAct, &QAction::triggered, this, &MainWindow::applyMerge);
     
     toolBar->addSeparator();
     
-    QAction *findAction = toolBar->addAction("🔍 Find");
-    findAction->setShortcut(QKeySequence::Find);
-    connect(findAction, &QAction::triggered, this, &MainWindow::applyFind);
-    
-    QAction *filterAction = toolBar->addAction("▼ Filter");
+    QAction *filterAction = toolBar->addAction("▼");
+    filterAction->setToolTip("Filter");
     filterAction->setShortcut(QKeySequence("Ctrl+Shift+L"));
     connect(filterAction, &QAction::triggered, this, &MainWindow::applyFilter);
 
     toolBar->addSeparator();
 
     QToolButton *borderBtn = new QToolButton(this);
-    borderBtn->setText("⊞ 테두리");
+    borderBtn->setText("⊞");
+    borderBtn->setToolTip("테두리");
     borderBtn->setPopupMode(QToolButton::InstantPopup);
     QMenu *borderMenu = new QMenu(this);
-    
     borderMenu->addAction("테두리 없음", this, [this]() { applyBorders("None"); });
     borderMenu->addSeparator();
-    
-    // 일반 선
     borderMenu->addAction("테두리 상", this, [this]() { applyBorders("ThinTop"); });
     borderMenu->addAction("테두리 하", this, [this]() { applyBorders("ThinBottom"); });
     borderMenu->addAction("테두리 좌", this, [this]() { applyBorders("ThinLeft"); });
@@ -225,11 +236,12 @@ void MainWindow::setupUi() {
     borderMenu->addAction("이중선 테두리 바깥", this, [this]() { applyBorders("DoubleOutside"); });
     borderMenu->addAction("이중선 테두리 안쪽", this, [this]() { applyBorders("DoubleInside"); });
     borderMenu->addAction("이중선 테두리 전체", this, [this]() { applyBorders("DoubleAll"); });
-    
+
     borderBtn->setMenu(borderMenu);
     toolBar->addWidget(borderBtn);
 
-    QAction *verticalTextAct = toolBar->addAction("세로쓰기");
+    QAction *verticalTextAct = toolBar->addAction("↕️");
+    verticalTextAct->setToolTip("세로쓰기");
     verticalTextAct->setCheckable(true);
     connect(verticalTextAct, &QAction::triggered, this, [this, verticalTextAct](bool checked) {
         if (!m_tableView || !m_tableView->selectionModel()) return;
@@ -238,8 +250,8 @@ void MainWindow::setupUi() {
     });
 
     toolBar->addSeparator();
-    toolBar->addWidget(new QLabel(" 표시형식: "));
     QComboBox *formatCombo = new QComboBox(this);
+    formatCombo->setToolTip("표시형식");
     formatCombo->addItems({"일반", "회계"});
     connect(formatCombo, &QComboBox::activated, this, [this, formatCombo](int index) {
         if (!m_tableView || !m_tableView->selectionModel()) return;
@@ -254,16 +266,22 @@ void MainWindow::setupUi() {
     copyAct->setShortcut(QKeySequence::Copy);
     connect(copyAct, &QAction::triggered, this, &MainWindow::applyCopy);
     addAction(copyAct);
+    editMenu->addAction(copyAct);
+    copyAct->setText("Copy");
 
     QAction *cutAct = new QAction(this);
     cutAct->setShortcut(QKeySequence::Cut);
     connect(cutAct, &QAction::triggered, this, &MainWindow::applyCut);
     addAction(cutAct);
+    editMenu->addAction(cutAct);
+    cutAct->setText("Cut");
 
     QAction *pasteAct = new QAction(this);
     pasteAct->setShortcut(QKeySequence::Paste);
     connect(pasteAct, &QAction::triggered, this, &MainWindow::applyPaste);
     addAction(pasteAct);
+    editMenu->addAction(pasteAct);
+    pasteAct->setText("Paste");
 
     QAction *insAct = new QAction(this);
     insAct->setShortcuts({QKeySequence("Ctrl+Shift++"), QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")});
@@ -295,48 +313,108 @@ void MainWindow::setupUi() {
     addSheetAct->setShortcut(QKeySequence("Ctrl+T"));
     connect(addSheetAct, &QAction::triggered, this, &MainWindow::addNewSheet);
     addAction(addSheetAct);
+    
+    auto getSheetNamesFromTree = [this]() -> QStringList {
+        QStringList names;
+        QTreeWidgetItemIterator it(m_sheetTree);
+        while (*it) {
+            if ((*it)->data(0, Qt::UserRole).toString() == "sheet") {
+                names.append((*it)->text(0));
+            }
+            ++it;
+        }
+        return names;
+    };
 
     QAction *prevSheetAct = new QAction(this);
     prevSheetAct->setShortcuts({QKeySequence("Ctrl+Shift+Tab"), QKeySequence("Ctrl+PageUp"), QKeySequence("Ctrl+Shift+Backtab")});
     prevSheetAct->setShortcutContext(Qt::ApplicationShortcut);
-    connect(prevSheetAct, &QAction::triggered, this, [this]() {
-        int idx = sheetTabs->currentIndex();
-        if (idx > 0) sheetTabs->setCurrentIndex(idx - 1);
+    connect(prevSheetAct, &QAction::triggered, this, [this, getSheetNamesFromTree]() {
+        QString currentName = sheetTabs->tabText(sheetTabs->currentIndex());
+        QStringList names = getSheetNamesFromTree();
+        int idx = names.indexOf(currentName);
+        if (idx > 0) {
+            QString targetName = names[idx - 1];
+            for (int i = 0; i < sheetTabs->count(); ++i) {
+                if (sheetTabs->tabText(i) == targetName) {
+                    sheetTabs->setCurrentIndex(i);
+                    break;
+                }
+            }
+        }
     });
     addAction(prevSheetAct);
 
     QAction *nextSheetAct = new QAction(this);
     nextSheetAct->setShortcuts({QKeySequence("Ctrl+Tab"), QKeySequence("Ctrl+PageDown")});
     nextSheetAct->setShortcutContext(Qt::ApplicationShortcut);
-    connect(nextSheetAct, &QAction::triggered, this, [this]() {
-        int idx = sheetTabs->currentIndex();
-        if (idx < sheetTabs->count() - 1) sheetTabs->setCurrentIndex(idx + 1);
+    connect(nextSheetAct, &QAction::triggered, this, [this, getSheetNamesFromTree]() {
+        QString currentName = sheetTabs->tabText(sheetTabs->currentIndex());
+        QStringList names = getSheetNamesFromTree();
+        int idx = names.indexOf(currentName);
+        if (idx >= 0 && idx < names.size() - 1) {
+            QString targetName = names[idx + 1];
+            for (int i = 0; i < sheetTabs->count(); ++i) {
+                if (sheetTabs->tabText(i) == targetName) {
+                    sheetTabs->setCurrentIndex(i);
+                    break;
+                }
+            }
+        }
     });
     addAction(nextSheetAct);
+
+    m_splitter = new QSplitter(Qt::Horizontal, this);
+    setCentralWidget(m_splitter);
+    
+    QWidget *leftPanel = new QWidget(this);
+    QVBoxLayout *leftLayout = new QVBoxLayout(leftPanel);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(0);
+    
+    QWidget *treeToolbar = new QWidget(leftPanel);
+    QHBoxLayout *treeToolbarLayout = new QHBoxLayout(treeToolbar);
+    treeToolbarLayout->setContentsMargins(2, 2, 2, 2);
+    QPushButton *btnNewFolder = new QPushButton("📁", treeToolbar);
+    btnNewFolder->setToolTip("새 폴더");
+    btnNewFolder->setFlat(true);
+    QPushButton *btnNewSheet = new QPushButton("📄", treeToolbar);
+    btnNewSheet->setToolTip("새 시트");
+    btnNewSheet->setFlat(true);
+    treeToolbarLayout->addWidget(btnNewFolder);
+    treeToolbarLayout->addWidget(btnNewSheet);
+    treeToolbarLayout->addStretch();
+    
+    leftLayout->addWidget(treeToolbar);
+    
+    m_sheetTree = new QTreeWidget(leftPanel);
+    m_sheetTree->setHeaderHidden(true);
+    m_sheetTree->setDragEnabled(true);
+    m_sheetTree->setAcceptDrops(true);
+    m_sheetTree->setDropIndicatorShown(true);
+    m_sheetTree->setDragDropMode(QAbstractItemView::InternalMove);
+    m_sheetTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    
+    leftLayout->addWidget(m_sheetTree);
+    m_splitter->addWidget(leftPanel);
     
     sheetTabs = new QTabWidget(this);
-    setCentralWidget(sheetTabs);
-    sheetTabs->setMovable(true);
-    sheetTabs->setTabsClosable(true);
-    connect(sheetTabs, &QTabWidget::tabCloseRequested, this, [this](int index) {
-        deleteSheet(index);
-    });
-    sheetTabs->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(sheetTabs, &QWidget::customContextMenuRequested, this, &MainWindow::showTabContextMenu);
+    sheetTabs->tabBar()->hide();
+    m_splitter->addWidget(sheetTabs);
+    m_splitter->setSizes({120, 880});
+    m_splitter->setStretchFactor(0, 0);
+    m_splitter->setStretchFactor(1, 1);
+    
+    connect(btnNewFolder, &QPushButton::clicked, this, &MainWindow::addNewFolder);
+    connect(btnNewSheet, &QPushButton::clicked, this, &MainWindow::addNewSheet);
+    connect(m_sheetTree, &QTreeWidget::itemClicked, this, &MainWindow::onTreeItemClicked);
+    connect(m_sheetTree, &QTreeWidget::itemDoubleClicked, this, &MainWindow::onTreeItemDoubleClicked);
+    connect(m_sheetTree, &QWidget::customContextMenuRequested, this, &MainWindow::showTreeContextMenu);
     connect(sheetTabs, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
-    connect(sheetTabs, &QTabWidget::tabBarDoubleClicked, this, [this](int index) {
-        renameSheet(index);
-    });
-
-    QToolButton *newTabBtn = new QToolButton(this);
-    newTabBtn->setText("+");
-    newTabBtn->setToolTip("새 시트 추가");
-    sheetTabs->setCornerWidget(newTabBtn, Qt::TopRightCorner);
-    connect(newTabBtn, &QToolButton::clicked, this, &MainWindow::addNewSheet);
 
     m_tableView = createSheetTab(m_model, "Sheet1");
+    syncTreeToTabs();
 }
-
 CustomTableView* MainWindow::currentView() const {
     return qobject_cast<CustomTableView*>(sheetTabs->currentWidget());
 }
@@ -475,6 +553,7 @@ void MainWindow::onTabChanged(int index) {
             m_model = qobject_cast<SpreadsheetModel*>(m_tableView->model());
             restoreMergedRanges();
         }
+        syncTreeToTabs();
     }
 }
 
@@ -487,6 +566,7 @@ void MainWindow::newDocument() {
     m_model = new SpreadsheetModel(this);
     m_tableView = createSheetTab(m_model, "Sheet1");
     setWindowTitle("LightCell - 새 문서");
+    populateTreeFromTabs();
 }
 
 void MainWindow::addNewSheet() {
@@ -500,6 +580,7 @@ void MainWindow::addNewSheet() {
     }
     SpreadsheetModel *newModel = new SpreadsheetModel(this);
     createSheetTab(newModel, QString("Sheet%1").arg(num));
+    syncTreeToTabs();
 }
 
 SpreadsheetModel* MainWindow::getSheetModel(const QString &sheetName) {
@@ -550,6 +631,7 @@ void MainWindow::duplicateSheet(int index) {
         sheetTabs->tabBar()->moveTab(newIdx, index + 1);
     }
     sheetTabs->setCurrentWidget(newView);
+    syncTreeToTabs();
 }
 
 void MainWindow::deleteSheet(int index) {
@@ -569,6 +651,7 @@ void MainWindow::deleteSheet(int index) {
     QWidget *w = sheetTabs->widget(index);
     sheetTabs->removeTab(index);
     if (w) w->deleteLater();
+    syncTreeToTabs();
 }
 
 void MainWindow::renameSheet(int index) {
@@ -576,10 +659,20 @@ void MainWindow::renameSheet(int index) {
     if (index < 0 || index >= sheetTabs->count()) return;
 
     bool ok = false;
+    QString oldName = sheetTabs->tabText(index);
     QString newName = QInputDialog::getText(this, "시트 이름 바꾸기", "새 시트 이름:",
-                                          QLineEdit::Normal, sheetTabs->tabText(index), &ok);
+                                          QLineEdit::Normal, oldName, &ok);
     if (ok && !newName.trimmed().isEmpty()) {
-        sheetTabs->setTabText(index, newName.trimmed());
+        newName = newName.trimmed();
+        sheetTabs->setTabText(index, newName);
+        QTreeWidgetItemIterator it(m_sheetTree);
+        while (*it) {
+            if ((*it)->data(0, Qt::UserRole).toString() == "sheet" && (*it)->text(0) == oldName) {
+                (*it)->setText(0, newName);
+                break;
+            }
+            ++it;
+        }
     }
 }
 
@@ -604,8 +697,14 @@ void MainWindow::showTabContextMenu(const QPoint &pos) {
     menu.exec(sheetTabs->mapToGlobal(pos));
 }
 
-void MainWindow::openFile() {
+void MainWindow::onOpenFileAction() {
     QString fileName = QFileDialog::getOpenFileName(this, "Open File", "", "LightCell & CSV Files (*.cx *.csv);;LightCell Files (*.cx);;CSV Files (*.csv);;All Files (*.*)");
+    if (!fileName.isEmpty()) {
+        openFile(fileName);
+    }
+}
+
+void MainWindow::openFile(const QString &fileName) {
     if (!fileName.isEmpty()) {
         bool success = false;
         if (fileName.endsWith(".cx", Qt::CaseInsensitive)) {
@@ -619,11 +718,13 @@ void MainWindow::openFile() {
             SpreadsheetModel *newModel = new SpreadsheetModel(this);
             success = newModel->loadCsv(fileName);
             createSheetTab(newModel, QFileInfo(fileName).fileName());
+            populateTreeFromTabs();
         }
         if (success) {
             m_currentFilePath = fileName;
             setWindowTitle("LightCell - " + fileName);
             restoreMergedRanges();
+            syncTreeToTabs();
         } else {
             QMessageBox::warning(this, "Error", "파일을 여는 데 실패했습니다.");
         }
@@ -715,6 +816,7 @@ bool MainWindow::saveProjectCx(const QString &filePath) {
     QJsonObject root;
     root["version"] = "2.0";
     root["activeSheet"] = sheetTabs->currentIndex();
+    root["treeStructure"] = serializeTree();
 
     QJsonArray sheetsArray;
     for (int i = 0; i < sheetTabs->count(); ++i) {
@@ -816,6 +918,13 @@ bool MainWindow::loadProjectCx(const QString &filePath) {
         newModel->fromJsonObject(root);
         createSheetTab(newModel, QFileInfo(filePath).fileName());
     }
+
+    if (root.contains("treeStructure")) {
+        buildTreeFromJson(root["treeStructure"].toArray());
+    } else {
+        populateTreeFromTabs();
+    }
+    
     return true;
 }
 
@@ -1131,6 +1240,7 @@ void MainWindow::deleteRow() {
         if (curr.isValid()) m_model->removeRows(curr.row(), 1);
     }
     if (m_model) m_model->endMacro();
+    syncTreeToTabs();
 }
 
 void MainWindow::insertCol() {
@@ -1165,6 +1275,7 @@ void MainWindow::deleteCol() {
         if (curr.isValid()) m_model->removeColumns(curr.column(), 1);
     }
     if (m_model) m_model->endMacro();
+    syncTreeToTabs();
 }
 
 void MainWindow::applyCopy() {
@@ -1202,6 +1313,7 @@ void MainWindow::applyCut() {
 
 void MainWindow::applyPaste() {
     QString clipText = QApplication::clipboard()->text();
+    clipText.remove('\r');
     if (clipText.isEmpty()) return;
     
     QModelIndex curr = m_tableView->currentIndex();
@@ -1211,18 +1323,80 @@ void MainWindow::applyPaste() {
     int startCol = curr.column();
     
     if (m_model) m_model->beginMacro();
-    QStringList lines = clipText.split('\n');
-    for (int r = 0; r < lines.size(); ++r) {
-        QString line = lines[r];
-        if (r == lines.size() - 1 && line.isEmpty()) break;
-        QStringList vals = line.split('\t');
-        for (int c = 0; c < vals.size(); ++c) {
+    
+    int r = 0;
+    QStringList currentRow;
+    QString currentCell;
+    bool inQuotes = false;
+    
+    auto processRow = [&]() {
+        if (currentRow.isEmpty() && currentCell.isEmpty()) return;
+        currentRow.append(currentCell);
+        
+        for (int c = 0; c < currentRow.size(); ++c) {
+            QString cellData = currentRow[c].trimmed();
+            
+            QString stripped = cellData;
+            stripped.remove(',');
+            stripped.remove(QChar(0x20A9)); // '₩'
+            stripped.remove('$');
+            stripped.remove(QChar(0x20AC)); // '€'
+            stripped.remove(' ');
+            
+            bool ok;
+            stripped.toDouble(&ok);
+            if (ok && !stripped.isEmpty()) {
+                cellData = stripped;
+            }
+            
             QModelIndex targetIdx = m_model->index(startRow + r, startCol + c);
             if (targetIdx.isValid()) {
-                m_model->setData(targetIdx, vals[c], Qt::EditRole);
+                m_model->setData(targetIdx, cellData, Qt::EditRole);
+            }
+        }
+        r++;
+        currentRow.clear();
+        currentCell.clear();
+    };
+
+    for (int i = 0; i < clipText.length(); ++i) {
+        QChar c = clipText[i];
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < clipText.length() && clipText[i + 1] == '"') {
+                    currentCell += '"';
+                    ++i;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                currentCell += c;
+            }
+        } else {
+            if (c == '"') {
+                inQuotes = true;
+            } else if (c == '\t') {
+                currentRow.append(currentCell);
+                currentCell.clear();
+            } else if (c == '\n') {
+                processRow();
+            } else if (c == '\r') {
+                if (i + 1 < clipText.length() && clipText[i + 1] == '\n') {
+                    processRow();
+                    ++i;
+                } else {
+                    processRow();
+                }
+            } else {
+                currentCell += c;
             }
         }
     }
+    
+    if (!currentCell.isEmpty() || !currentRow.isEmpty()) {
+        processRow();
+    }
+    
     if (m_model) m_model->endMacro();
 }
 
@@ -1499,4 +1673,193 @@ void MainWindow::applyBorders(const QString &type) {
     
     model->applyBorders(selList, type);
     m_tableView->viewport()->update();
+}
+
+void MainWindow::addNewFolder() {
+    bool ok;
+    QString name = QInputDialog::getText(this, "새 폴더", "폴더 이름을 입력하세요:", QLineEdit::Normal, "New Folder", &ok);
+    if (ok && !name.isEmpty()) {
+        QTreeWidgetItem *item = new QTreeWidgetItem(m_sheetTree);
+        item->setText(0, name);
+        item->setIcon(0, QIcon()); // No specific icon or set a folder icon
+        item->setData(0, Qt::UserRole, "folder");
+        item->setFlags(item->flags() | Qt::ItemIsEditable | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled);
+    }
+}
+
+void MainWindow::showTreeContextMenu(const QPoint &pos) {
+    QTreeWidgetItem *item = m_sheetTree->itemAt(pos);
+    if (!item) return;
+    
+    QMenu menu(this);
+    if (item->data(0, Qt::UserRole).toString() == "folder") {
+        QAction *renameAct = menu.addAction("이름 변경");
+        QAction *delAct = menu.addAction("삭제");
+        connect(renameAct, &QAction::triggered, this, [this, item]() {
+            m_sheetTree->editItem(item);
+        });
+        connect(delAct, &QAction::triggered, this, [this, item]() {
+            delete item;
+        });
+    } else {
+        // It's a sheet
+        int tabIdx = -1;
+        for (int i=0; i<sheetTabs->count(); ++i) {
+            if (sheetTabs->tabText(i) == item->text(0)) { tabIdx = i; break; }
+        }
+        if (tabIdx >= 0) {
+            QAction *renameAct = menu.addAction("이름 변경");
+            QAction *delAct = menu.addAction("삭제");
+            QAction *dupAct = menu.addAction("복제");
+            connect(renameAct, &QAction::triggered, this, [this, tabIdx]() { renameSheet(tabIdx); });
+            connect(delAct, &QAction::triggered, this, [this, tabIdx]() { deleteSheet(tabIdx); });
+            connect(dupAct, &QAction::triggered, this, [this, tabIdx]() { duplicateSheet(tabIdx); });
+        }
+    }
+    menu.exec(m_sheetTree->mapToGlobal(pos));
+}
+
+void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column) {
+    if (item->data(0, Qt::UserRole).toString() == "folder") return;
+    QString sheetName = item->text(0);
+    for (int i=0; i<sheetTabs->count(); ++i) {
+        if (sheetTabs->tabText(i) == sheetName) {
+            sheetTabs->setCurrentIndex(i);
+            break;
+        }
+    }
+}
+
+void MainWindow::onTreeItemDoubleClicked(QTreeWidgetItem *item, int column) {
+    if (item->data(0, Qt::UserRole).toString() == "folder") {
+        m_sheetTree->editItem(item);
+    } else {
+        int tabIdx = -1;
+        for (int i=0; i<sheetTabs->count(); ++i) {
+            if (sheetTabs->tabText(i) == item->text(0)) { tabIdx = i; break; }
+        }
+        if (tabIdx >= 0) renameSheet(tabIdx);
+    }
+}
+
+void MainWindow::populateTreeFromTabs() {
+    m_sheetTree->clear();
+    for (int i=0; i<sheetTabs->count(); ++i) {
+        QTreeWidgetItem *item = new QTreeWidgetItem(m_sheetTree);
+        item->setText(0, sheetTabs->tabText(i));
+        item->setData(0, Qt::UserRole, "sheet");
+        item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
+        item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled); // Sheets shouldn't be droppable into
+    }
+}
+
+void MainWindow::syncTreeToTabs() {
+    // A simple sync that adds missing sheets to the tree. 
+    // It doesn't rebuild to preserve folders.
+    QSet<QString> treeSheets;
+    
+    QTreeWidgetItemIterator it(m_sheetTree);
+    while (*it) {
+        if ((*it)->data(0, Qt::UserRole).toString() == "sheet") {
+            treeSheets.insert((*it)->text(0));
+            // Ensure sheet items can't accept drops
+            (*it)->setFlags((*it)->flags() & ~Qt::ItemIsDropEnabled);
+            // Change rename behavior: let renameSheet handle it instead of inline editing
+            (*it)->setFlags((*it)->flags() & ~Qt::ItemIsEditable);
+        } else {
+            (*it)->setFlags((*it)->flags() | Qt::ItemIsDropEnabled | Qt::ItemIsEditable);
+        }
+        ++it;
+    }
+    
+    for (int i=0; i<sheetTabs->count(); ++i) {
+        if (!treeSheets.contains(sheetTabs->tabText(i))) {
+            QTreeWidgetItem *item = new QTreeWidgetItem(m_sheetTree);
+            item->setText(0, sheetTabs->tabText(i));
+            item->setData(0, Qt::UserRole, "sheet");
+            item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
+            item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled & ~Qt::ItemIsEditable);
+        }
+    }
+    
+    // Remove deleted sheets
+    QSet<QString> tabSheets;
+    for (int i=0; i<sheetTabs->count(); ++i) tabSheets.insert(sheetTabs->tabText(i));
+    QTreeWidgetItemIterator it2(m_sheetTree);
+    while (*it2) {
+        QTreeWidgetItem *item = *it2;
+        ++it2;
+        if (item->data(0, Qt::UserRole).toString() == "sheet" && !tabSheets.contains(item->text(0))) {
+            delete item;
+        }
+    }
+    
+    // Update selection
+    if (sheetTabs->currentIndex() >= 0) {
+        QString currentName = sheetTabs->tabText(sheetTabs->currentIndex());
+        QTreeWidgetItemIterator it3(m_sheetTree);
+        while (*it3) {
+            if ((*it3)->data(0, Qt::UserRole).toString() == "sheet" && (*it3)->text(0) == currentName) {
+                m_sheetTree->setCurrentItem(*it3);
+                break;
+            }
+            ++it3;
+        }
+    }
+}
+
+QJsonArray MainWindow::serializeTree() const {
+    QJsonArray treeArray;
+    for (int i=0; i<m_sheetTree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_sheetTree->topLevelItem(i);
+        QJsonObject obj;
+        obj["name"] = item->text(0);
+        obj["type"] = item->data(0, Qt::UserRole).toString();
+        if (obj["type"].toString() == "folder") {
+            obj["expanded"] = item->isExpanded();
+            QJsonArray children;
+            for (int j=0; j<item->childCount(); ++j) {
+                QTreeWidgetItem *child = item->child(j);
+                QJsonObject cobj;
+                cobj["name"] = child->text(0);
+                cobj["type"] = child->data(0, Qt::UserRole).toString();
+                children.append(cobj);
+            }
+            obj["children"] = children;
+        }
+        treeArray.append(obj);
+    }
+    return treeArray;
+}
+
+void MainWindow::buildTreeFromJson(const QJsonArray &treeArray) {
+    m_sheetTree->clear();
+    for (int i=0; i<treeArray.size(); ++i) {
+        QJsonObject obj = treeArray[i].toObject();
+        QTreeWidgetItem *item = new QTreeWidgetItem(m_sheetTree);
+        item->setText(0, obj["name"].toString());
+        QString type = obj["type"].toString();
+        item->setData(0, Qt::UserRole, type);
+        
+        if (type == "folder") {
+            item->setIcon(0, QIcon()); 
+            item->setFlags(item->flags() | Qt::ItemIsEditable | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled);
+            if (obj.contains("expanded") && obj["expanded"].toBool()) {
+                m_sheetTree->expandItem(item);
+            }
+            
+            QJsonArray children = obj["children"].toArray();
+            for (int j=0; j<children.size(); ++j) {
+                QJsonObject cobj = children[j].toObject();
+                QTreeWidgetItem *child = new QTreeWidgetItem(item);
+                child->setText(0, cobj["name"].toString());
+                child->setData(0, Qt::UserRole, cobj["type"].toString());
+                child->setFlags(child->flags() | Qt::ItemIsDragEnabled);
+                child->setFlags(child->flags() & ~Qt::ItemIsDropEnabled & ~Qt::ItemIsEditable);
+            }
+        } else {
+            item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
+            item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled & ~Qt::ItemIsEditable);
+        }
+    }
 }

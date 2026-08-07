@@ -102,11 +102,13 @@ void CustomTableView::closeEditor(QWidget *editor, QAbstractItemDelegate::EndEdi
         QTableView::closeEditor(editor, hint); // 기본 동작(아래로 이동) 수행 허용
         
         int nextCol = (m_tabStartCol != -1) ? m_tabStartCol : currentIndex().column();
+        Qt::KeyboardModifiers mods = QGuiApplication::keyboardModifiers();
         
         // Qt의 내부 처리가 끝난 뒤 커서를 원하는 곳으로 강제 이동
-        QMetaObject::invokeMethod(this, [this, nextCol]() {
-            int currentRow = currentIndex().row() + 1; // 명시적으로 1칸 내림
-            if (currentRow < model()->rowCount()) {
+        QMetaObject::invokeMethod(this, [this, nextCol, mods]() {
+            int dr = (mods & Qt::ShiftModifier) ? -1 : 1;
+            int currentRow = currentIndex().row() + dr; 
+            if (currentRow >= 0 && currentRow < model()->rowCount()) {
                 QModelIndex nextIndex = model()->index(currentRow, nextCol);
                 setCurrentIndex(nextIndex);
             }
@@ -223,6 +225,17 @@ void CustomTableView::keyPressEvent(QKeyEvent *event) {
                 return;
             } else {
                 QTableView::keyPressEvent(event);
+                return;
+            }
+        }
+        if (event->key() == Qt::Key_D) {
+            if (state() != QAbstractItemView::EditingState) {
+                SpreadsheetModel *sm = qobject_cast<SpreadsheetModel*>(model());
+                if (sm) {
+                    sm->applyFillDown(selectionModel()->selectedIndexes());
+                    viewport()->update();
+                    update();
+                }
                 return;
             }
         }
@@ -361,7 +374,12 @@ void CustomTableView::mousePressEvent(QMouseEvent *event) {
         if (tabs) {
             QString currentSheet = tabs->tabText(tabs->indexOf(this));
             if (currentSheet != MainWindow::s_formulaStartSheet && !MainWindow::s_formulaStartSheet.isEmpty()) {
-                cell = currentSheet + "!" + cell;
+                QString sheetPrefix = currentSheet;
+                QRegularExpression rx("[^A-Za-z0-9_]");
+                if (rx.match(sheetPrefix).hasMatch()) {
+                    sheetPrefix = "'" + sheetPrefix + "'";
+                }
+                cell = sheetPrefix + "!" + cell;
             }
         }
         
@@ -424,7 +442,12 @@ void CustomTableView::mouseMoveEvent(QMouseEvent *event) {
             if (tabs) {
                 QString currentSheet = tabs->tabText(tabs->indexOf(this));
                 if (currentSheet != MainWindow::s_formulaStartSheet && !MainWindow::s_formulaStartSheet.isEmpty()) {
-                    rangeRef = currentSheet + "!" + rangeRef;
+                    QString sheetPrefix = currentSheet;
+                    QRegularExpression rx("[^A-Za-z0-9_]");
+                    if (rx.match(sheetPrefix).hasMatch()) {
+                        sheetPrefix = "'" + sheetPrefix + "'";
+                    }
+                    rangeRef = sheetPrefix + "!" + rangeRef;
                 }
             }
             
@@ -463,7 +486,8 @@ void SpreadsheetDelegate::paint(QPainter *painter, const QStyleOptionViewItem &o
     
     if (isVert && !text.isEmpty()) {
         painter->save();
-        QFont font = option.font;
+        QVariant fontVar = index.data(Qt::FontRole);
+        QFont font = fontVar.isValid() ? fontVar.value<QFont>() : option.font;
         painter->setFont(font);
         
         QColor fgColor = index.data(Qt::ForegroundRole).value<QColor>();
@@ -588,18 +612,31 @@ bool SpreadsheetDelegate::eventFilter(QObject *object, QEvent *event) {
                     pe->insertPlainText("\n");
                     return true;
                 }
-            } else if (keyEvent->modifiers() == Qt::NoModifier) {
-                // 그냥 Enter: 편집 완료 및 다음 셀로 이동 (이벤트 필터를 통과시켜 기본 동작 수행)
+            } else if (keyEvent->modifiers() == Qt::NoModifier || keyEvent->modifiers() == Qt::ShiftModifier) {
+                // Enter: 편집 완료 및 다음 셀로 이동 (Shift+Enter는 위로 이동)
                 MainWindow::s_activeFormulaEditor = nullptr;
                 MainWindow::s_formulaStartSheet = "";
                 MainWindow::s_isSelectingFormulaRange = false;
                 
-                // QPlainTextEdit는 기본적으로 Enter를 줄바꿈으로 처리하므로 가로채서 편집을 종료시킴
                 if (QPlainTextEdit *pe = qobject_cast<QPlainTextEdit*>(object)) {
                     emit commitData(pe);
                     emit closeEditor(pe, QAbstractItemDelegate::SubmitModelCache);
                     return true;
                 }
+            }
+        } else if (keyEvent->key() == Qt::Key_Tab || keyEvent->key() == Qt::Key_Backtab) {
+            MainWindow::s_activeFormulaEditor = nullptr;
+            MainWindow::s_formulaStartSheet = "";
+            MainWindow::s_isSelectingFormulaRange = false;
+            
+            if (QPlainTextEdit *pe = qobject_cast<QPlainTextEdit*>(object)) {
+                emit commitData(pe);
+                if (keyEvent->modifiers() & Qt::ShiftModifier) {
+                    emit closeEditor(pe, QAbstractItemDelegate::EditPreviousItem);
+                } else {
+                    emit closeEditor(pe, QAbstractItemDelegate::EditNextItem);
+                }
+                return true;
             }
         }
     }
